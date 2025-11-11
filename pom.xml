@@ -6,7 +6,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>test</groupId>
     <artifactId>maven-simple</artifactId>
-    <version>1.0.0.4</version>
+    <version>1.0.0.5</version>
     <packaging>jar</packaging>
 
     <properties>

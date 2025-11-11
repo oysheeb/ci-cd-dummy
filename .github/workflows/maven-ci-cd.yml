@@ -1,0 +1,93 @@
+name: Java Maven CI/CD Pipeline
+
+# Defines when this workflow runs. Matches the 'githubPush()' trigger from Jenkins.
+on:
+  push:
+    branches:
+      # MODIFICATION: Changed from - main to - '**' to trigger on ALL branches.
+      - '**' 
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Defines global environment variables
+env:
+  APP_NAME: ci-cd-dummy
+  # Note: GitHub Actions typically run on Linux or macOS. If you must deploy to a Windows path, 
+  # this path would be relative to the GitHub Runner's filesystem, or you'd need a separate Windows Runner.
+  DEPLOY_DIR: C:/Deployments/${{ env.APP_NAME }}
+  SONAR_PROJECT_KEY: ${{ env.APP_NAME }}
+  JAVA_VERSION: '21' # Based on your pom.xml requirement
+
+jobs:
+  build_and_deploy:
+    # Use a Windows runner to correctly handle the 'C:/Deployments' path and bat/copy commands, 
+    # mirroring the Jenkins agent environment implicitly used by the 'bat' calls.
+    runs-on: windows-latest
+    
+    # Define services required (e.g., if you needed a database)
+
+    steps:
+    
+    # ===================================================
+    # STAGE: Checkout (Equivalent to Jenkins 'Checkout')
+    # ===================================================
+    - name: Checkout source code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Required by SonarQube for accurate blame information
+
+    # Setup JDK based on the project requirements
+    - name: Set up JDK ${{ env.JAVA_VERSION }}
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+        cache: 'maven' # Caches local maven repository for faster builds
+
+    # ===================================================
+    # STAGE: Build & Install (Equivalent to Jenkins 'Build & Install')
+    # ===================================================
+    - name: Build and Install Artifact
+      run: mvn clean install -DskipTests
+      
+    # ===================================================
+    # STAGE: Unit & Integration Test (Equivalent to Jenkins 'Unit & Integration Test')
+    # ===================================================
+    - name: Run Tests
+      run: mvn test
+
+    # ===================================================
+    # STAGE: Code Analysis (Equivalent to Jenkins 'Code Analysis (SonarQube)')
+    # ===================================================
+    # This step requires setting the SONAR_TOKEN secret in your GitHub repository settings
+    - name: SonarQube Analysis
+      env:
+        # Use your SonarQube token stored as a GitHub Secret
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} 
+      run: |
+        # In GitHub Actions, we often pass the server URL and token directly to the maven command.
+        # This replaces the need for 'withSonarQubeEnv' if the properties aren't in settings.xml.
+        mvn sonar:sonar `
+          -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }} `
+          -Dsonar.host.url=http://your-sonarqube-server-url ` # REPLACE with your actual URL
+          -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+    # ===================================================
+    # STAGE: Deploy Artifact (Equivalent to Jenkins 'Deploy Artifact')
+    # ===================================================
+    - name: Deploy Artifact to Local Directory
+      # Using PowerShell for cleaner Windows commands in YAML
+      shell: powershell
+      run: |
+        Write-Host "Deploying ${{ env.APP_NAME }} to ${{ env.DEPLOY_DIR }}"
+        
+        # Create the deployment directory if it doesn't exist
+        if (-not (Test-Path -Path "${{ env.DEPLOY_DIR }}")) {
+            New-Item -Path "${{ env.DEPLOY_DIR }}" -ItemType Directory
+        }
+        
+        # Copy the JAR file
+        Copy-Item -Path "target\*.jar" -Destination "${{ env.DEPLOY_DIR }}"
+        Write-Host "✅ Deployment successful! Artifact is at ${{ env.DEPLOY_DIR }}"
+
+    # The 'post' success/failure steps are handled by the GitHub Actions UI and status checks.
