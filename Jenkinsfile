@@ -34,6 +34,13 @@ pipeline {
             }
         }
 
+         stage('Code Analysis') {
+            steps {
+                withSonarQubeEnv('MySonar')
+                bat 'sonar-scanner'
+            }
+        }
+
         stage('Deploy') {
             steps {
                 echo "Deploying ${APP_NAME} to ${DEPLOY_DIR}"
