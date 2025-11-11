@@ -4,40 +4,30 @@ on:
   push:
     branches:
       - main
-  workflow_run:
-    workflows: ["ci"]
-    types:
-      - completed
 
 jobs:
   deploy:
-    name: Continuous Deployment
+    name: Publish to Nexus
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: 17
-          distribution: 'zulu'
+          distribution: 'temurin'
+          server-id: nexus   # matches <id> in pom.xml distributionManagement
+          server-username: NEXUS_USERNAME
+          server-password: NEXUS_PASSWORD
 
-      - name: Build package for deployment
+      - name: Build with Maven
         run: mvn -B clean package
 
-      - name: Deploy to remote server
+      - name: Publish to Nexus
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-        run: |
-          echo "$SSH_PRIVATE_KEY" > private_key.pem
-          chmod 600 private_key.pem
-          scp -i private_key.pem target/*.jar $SERVER_USER@$SERVER_HOST:/opt/app/
-          ssh -i private_key.pem $SERVER_USER@$SERVER_HOST "
-            pkill -f 'java -jar' || true
-            nohup java -jar /opt/app/*.jar > app.log 2>&1 &
-          "
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: mvn -B deploy -DskipTests=true
