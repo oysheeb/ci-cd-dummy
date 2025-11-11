@@ -1,60 +1,56 @@
 pipeline {
-    agent any  // runs on any available Jenkins agent
+    agent any
 
     environment {
-        APP_NAME = "PipelineTest"
-        DEPLOY_DIR = "/var/www/cicdtest1"
+        APP_NAME = "ci-cd-dummy"
+        DEPLOY_DIR = "C:/Deployments/${APP_NAME}"
+    }
+
+    triggers {
+        githubPush()  // ✅ Automatically triggers on GitHub push
     }
 
     stages {
         stage('Checkout') {
             steps {
-                echo "Cloning the repo..."
-                checkout scm
+                git branch: 'main',
+                    url: 'https://github.com/oysheeb/ci-cd-dummy.git'
             }
         }
 
         stage('Build') {
             steps {
-                echo "Building the application..."
-                // Example for Maven build
-                sh 'mvn clean install'
+                echo "Building ${APP_NAME}..."
+                // Example build command
+                bat 'mvn clean package' // use sh for Linux
             }
         }
 
         stage('Test') {
             steps {
-                echo "Running unit tests..."
-                // Example for running tests
-                sh 'mvn test'
-            }
-        }
-
-        stage('Package') {
-            steps {
-                echo "Packaging artifacts..."
-                sh 'mvn package'
+                echo "Running tests..."
+                // Example test command
+                bat 'mvn test'
             }
         }
 
         stage('Deploy') {
-            when {
-                branch 'main' // only deploy from main branch
-            }
             steps {
-                echo "Deploying application..."
-                // Example: copy jar to deploy folder
-                sh 'cp target/*.jar ${DEPLOY_DIR}/'
+                echo "Deploying ${APP_NAME} to ${DEPLOY_DIR}"
+                bat """
+                    mkdir "${DEPLOY_DIR}" 2>nul
+                    copy target\\*.jar "${DEPLOY_DIR}\\"
+                """
             }
         }
     }
 
     post {
         success {
-            echo '✅ Build & Deploy Successful!'
+            echo "✅ Deployment successful!"
         }
         failure {
-            echo '❌ Build Failed!'
+            echo "❌ Build or deployment failed."
         }
     }
 }
