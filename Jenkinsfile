@@ -1,71 +1,187 @@
 pipeline {
     agent any
-    // Ensure these tool names match your configuration in Manage Jenkins -> Global Tool Configuration
+    
+    // Tool names MUST match your Jenkins Global Tool Configuration
     tools {
-        maven 'M3' 
-        jdk 'JDK17' 
+        maven 'Maven-3.x'      // ← Must match Maven name in Jenkins
+        jdk 'JDK17'     // ← Must match JDK name in Jenkins
     }
+    
     environment {
-         // Define URLs directly, as they are not secrets
-        NEXUS_REPO_HOST = 'http://localhost:8081' // REPLACE with your actual Nexus URL from GITHUB_URL
-        SONAR_URL = 'http://localhost:9000' // REPLACE with your actual SonarQube URL from SONAR_HOST_URL
-
-        // Reference the *Jenkins Credential IDs* we created in Step 1
-        NEXUS_CREDS_ID = 'admin'       // <-- Must match Jenkins ID
-        SONAR_TOKEN_ID = 'oysheeb19'   // <-- Must match Jenkins ID
+        // URLs (not secrets)
+        NEXUS_REPO_HOST = 'localhost:8081'  // ← NO http:// prefix!
+        SONAR_URL = 'http://localhost:9000'
         
+        // Jenkins Credential IDs (these are REFERENCES, not actual credentials)
+        NEXUS_CREDS_ID = 'nexus-credentials'   // ← Must match Jenkins credential ID
+        SONAR_TOKEN_ID = 'sonarqube-token'     // ← Must match Jenkins credential ID
+        
+        // Nexus repositories
         NEXUS_SNAPSHOT_REPO = 'maven-snapshots'
         NEXUS_RELEASE_REPO = 'maven-releases'
     }
+    
     stages {
         stage('Checkout Code') {
             steps {
-                // Check out the code from the SCM defined in the job configuration
+                echo '📥 Checking out code from SCM...'
                 checkout scm
-            }
-        }
-        stage('Build and Unit Test') {
-            steps {
-                // Use the pom.xml to compile, test, and package the artifact
-                sh 'mvn clean install' 
-            }
-        }
-        stage('Sonar Test/Analysis') {
-            steps {
-                // Use the SonarQube Scanner defined in Global Tool Configuration (installationName: 'sonarscanner')
-                withSonarQubeEnv(credentialsId: env.SONAR_TOKEN_ID, installationName: 'sonarscanner') {
-                    // Use the project key from your SonarQube server configuration
-                    sh 'mvn sonar:sonar -Dsonar.projectKey=ci-cd-dummy -Dsonar.host.url=${SONAR_URL}'
+                script {
+                    // Get Git info for logging
+                    env.GIT_COMMIT = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
+                    env.GIT_BRANCH = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+                    echo "Branch: ${env.GIT_BRANCH}, Commit: ${env.GIT_COMMIT?.take(7)}"
                 }
             }
         }
+        
+        stage('Build') {
+            steps {
+                echo '🔨 Compiling the project...'
+                sh 'mvn clean compile'
+            }
+        }
+        
+        stage('Unit Tests') {
+            steps {
+                echo '🧪 Running unit tests...'
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    // Publish test results
+                    junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+        
+        stage('Package') {
+            steps {
+                echo '📦 Packaging the application...'
+                sh 'mvn package -DskipTests'
+            }
+        }
+        
+        stage('SonarQube Analysis') {
+            steps {
+                echo '🔍 Running SonarQube analysis...'
+                // withSonarQubeEnv uses the server configuration from Jenkins
+                // The token is already configured in the SonarQube server settings
+                withSonarQubeEnv('sonarscanner') {
+                    sh """
+                        mvn sonar:sonar \
+                        -Dsonar.projectKey=ci-cd-dummy \
+                        -Dsonar.host.url=${SONAR_URL}
+                    """
+                }
+            }
+        }
+        
+        stages {
+        stage('Diagnostic Check') {
+            steps {
+                script {
+                        echo '=== System Information ==='
+                        sh 'java -version'
+                        sh 'mvn -version'
+                        sh 'echo "JAVA_HOME: $JAVA_HOME"'
+                        sh 'echo "PATH: $PATH"'
+                    
+                        echo '\n=== Network Checks ==='
+                        sh 'curl -I http://localhost:9000 || echo "SonarQube not reachable"'
+                        sh 'curl -I http://localhost:8081 || echo "Nexus not reachable"'
+                    
+                        echo '\n=== Environment Variables ==='
+                        sh 'printenv | grep -i java'
+                        sh 'printenv | grep -i maven'
+                        }
+                    }
+                }
+            }
+
+
+        stage('Quality Gate') {
+            steps {
+                echo '⏳ Waiting for SonarQube Quality Gate result...'
+                timeout(time: 5, unit: 'MINUTES') {
+                    script {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "❌ Quality Gate failed with status: ${qg.status}"
+                        } else {
+                            echo "✅ Quality Gate passed!"
+                        }
+                    }
+                }
+            }
+        }
+        
         stage('Publish Artifact to Nexus') {
             steps {
                 script {
-                    // Read the GAVC details dynamically from the project's pom.xml file
+                    echo '📤 Publishing artifact to Nexus Repository...'
+                    
+                    // Read POM file to get artifact details
                     def pom = readMavenPom file: 'pom.xml'
                     
-                    // Determine if this is a SNAPSHOT or RELEASE version to choose the correct Nexus repo
-                    def repoName = pom.version.contains('SNAPSHOT') ? env.NEXUS_SNAPSHOT_REPO : env.NEXUS_RELEASE_REPO
+                    // Determine if SNAPSHOT or RELEASE
+                    def repoName = pom.version.contains('SNAPSHOT') ? 
+                                   env.NEXUS_SNAPSHOT_REPO : 
+                                   env.NEXUS_RELEASE_REPO
                     
-                    echo "Uploading artifact version ${pom.version} to Nexus repository: ${repoName}"
-
-                    // Use the Nexus Artifact Uploader Plugin step
+                    echo """
+                    ═══════════════════════════════════════
+                    Artifact Information:
+                    ───────────────────────────────────────
+                    Group ID:    ${pom.groupId}
+                    Artifact ID: ${pom.artifactId}
+                    Version:     ${pom.version}
+                    Packaging:   ${pom.packaging}
+                    Repository:  ${repoName}
+                    ═══════════════════════════════════════
+                    """
+                    
+                    // Upload to Nexus
                     nexusArtifactUploader(
                         nexusVersion: 'nexus3',
                         protocol: 'http',
-                        nexusUrl: env.NEXUS_REPO_HOST,
+                        nexusUrl: env.NEXUS_REPO_HOST,     // Just hostname:port
                         repository: repoName,
-                        credentialsId: env.NEXUS_CREDS_ID,
+                        credentialsId: env.NEXUS_CREDS_ID, // Jenkins credential ID
                         groupId: pom.groupId,
                         artifactId: pom.artifactId,
                         version: pom.version,
-                        packaging: pom.packaging, // Uses 'jar' as defined in your POM
-                        // Specify the actual file path generated by the 'mvn clean install' command
-                        artifacts: [[artifactId: pom.artifactId, classifier: '', file: "target/${pom.artifactId}-${pom.version}.jar", type: pom.packaging]]
+                        packaging: pom.packaging,
+                        artifacts: [
+                            [
+                                artifactId: pom.artifactId,
+                                classifier: '',
+                                file: "target/${pom.artifactId}-${pom.version}.${pom.packaging}",
+                                type: pom.packaging
+                            ]
+                        ]
                     )
+                    
+                    echo "✅ Artifact uploaded successfully to ${repoName}!"
                 }
             }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ ════════════════════════════════════════'
+            echo '✅  Pipeline completed successfully!'
+            echo '✅ ════════════════════════════════════════'
+        }
+        failure {
+            echo '❌ ════════════════════════════════════════'
+            echo '❌  Pipeline failed!'
+            echo '❌ ════════════════════════════════════════'
+        }
+        always {
+            echo '🧹 Cleaning workspace...'
+            cleanWs()
         }
     }
 }
