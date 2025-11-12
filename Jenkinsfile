@@ -1,95 +1,71 @@
 pipeline {
-    // Defines the execution environment. 'any' means Jenkins can run it on any available agent.
     agent any
-
-    // Defines global environment variables used throughout the pipeline.
+    // Ensure these tool names match your configuration in Manage Jenkins -> Global Tool Configuration
+    tools {
+        maven 'M3' 
+        jdk 'JDK17' 
+    }
     environment {
-        APP_NAME = "ci-cd-dummy"
-        // Using forward slashes is generally safer even on Windows agents for consistency
-        DEPLOY_DIR = "C:/Deployments/${APP_NAME}" 
+         // Define URLs directly, as they are not secrets
+        NEXUS_REPO_HOST = 'http://localhost:8081' // REPLACE with your actual Nexus URL from GITHUB_URL
+        SONAR_URL = 'http://localhost:9000' // REPLACE with your actual SonarQube URL from SONAR_HOST_URL
+
+        // Reference the *Jenkins Credential IDs* we created in Step 1
+        NEXUS_CREDS_ID = 'admin'       // <-- Must match Jenkins ID
+        SONAR_TOKEN_ID = 'oysheeb19'   // <-- Must match Jenkins ID
         
-        // Ensure SonarQube properties are set for the scanner
-        // Replace with your actual project key/name if needed.
-        SONAR_PROJECT_KEY = "${APP_NAME}" 
+        NEXUS_SNAPSHOT_REPO = 'maven-snapshots'
+        NEXUS_RELEASE_REPO = 'maven-releases'
     }
-
-    // Defines how the pipeline is triggered.
-    triggers {
-        // githubPush() requires specific configuration. pollSCM() is a simpler alternative, 
-        // or ensure you set up a webhook in GitHub for proper push events.
-        githubPush() 
-    }
-
-    // The core steps of the pipeline 
     stages {
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                echo "Checking out source code..."
-                // Recommended practice is to use the credentials binding for private repos
-                git branch: 'main',
-                    url: 'https://github.com/oysheeb/ci-cd-dummy.git'
+                // Check out the code from the SCM defined in the job configuration
+                checkout scm
             }
         }
-
-        stage('Build & Install') {
+        stage('Build and Unit Test') {
             steps {
-                echo "Building ${APP_NAME} and installing artifact locally..."
-                // Use 'install' to compile, test, package, and place the artifact in the local Maven repo (.m2)
-                // This is generally better practice in a full CI/CD process.
-                bat 'mvn clean install -DskipTests' // Skipping tests here to run them in the dedicated 'Test' stage
+                // Use the pom.xml to compile, test, and package the artifact
+                sh 'mvn clean install' 
             }
         }
-
-        stage('Unit & Integration Test') {
+        stage('Sonar Test/Analysis') {
             steps {
-                echo "Running unit and integration tests..."
-                // Runs tests and generates test reports
-                bat 'mvn test'
-            }
-        }
-
-        stage('Code Analysis (SonarQube)') {
-             steps {
-                 echo "Starting SonarQube analysis..."
-                 // The 'withSonarQubeEnv' wrapper sets up credentials/server URL.
-                 // For a Maven project, running 'mvn sonar:sonar' is the standard way to trigger the analysis
-                 // as it uses the project's POM configuration.
-                 withSonarQubeEnv('MySonar') {
-                     // Note: We run install first, so the classes are available for SonarQube
-                     bat "mvn sonar:sonar -Dsonar.projectKey=${SONAR_PROJECT_KEY}"
-                 }
-             }
-         }
-
-        stage('Deploy Artifact') {
-            steps {
-                echo "Deploying ${APP_NAME} to local directory ${DEPLOY_DIR}"
-                
-                // Using a script block for multi-line Windows commands is cleaner
-                script {
-                    // Create the directory if it doesn't exist
-                    bat "mkdir \"${DEPLOY_DIR}\" 2>nul || (if exist \"${DEPLOY_DIR}\" echo Target directory already exists.)"
-                    
-                    // Copy the packaged JAR file (assumes standard Maven output)
-                    // The 'target' directory is relative to the workspace.
-                    bat "copy target\\*.jar \"${DEPLOY_DIR}\\"
+                // Use the SonarQube Scanner defined in Global Tool Configuration (installationName: 'sonarscanner')
+                withSonarQubeEnv(credentialsId: env.SONAR_TOKEN_ID, installationName: 'sonarscanner') {
+                    // Use the project key from your SonarQube server configuration
+                    sh 'mvn sonar:sonar -Dsonar.projectKey=ci-cd-dummy -Dsonar.host.url=${SONAR_URL}'
                 }
             }
         }
-    }
+        stage('Publish Artifact to Nexus') {
+            steps {
+                script {
+                    // Read the GAVC details dynamically from the project's pom.xml file
+                    def pom = readMavenPom file: 'pom.xml'
+                    
+                    // Determine if this is a SNAPSHOT or RELEASE version to choose the correct Nexus repo
+                    def repoName = pom.version.contains('SNAPSHOT') ? env.NEXUS_SNAPSHOT_REPO : env.NEXUS_RELEASE_REPO
+                    
+                    echo "Uploading artifact version ${pom.version} to Nexus repository: ${repoName}"
 
-    post {
-        always {
-            // Cleanup the workspace after the build to save disk space
-            cleanWs()
-        }
-        success {
-            // Send notification or update status on success
-            echo "✅ Pipeline completed successfully. Artifact is at ${DEPLOY_DIR}"
-        }
-        failure {
-            // Send detailed failure notification
-            echo "❌ Pipeline failed at stage: ${env.STAGE_NAME}. Check logs for details."
+                    // Use the Nexus Artifact Uploader Plugin step
+                    nexusArtifactUploader(
+                        nexusVersion: 'nexus3',
+                        protocol: 'http',
+                        nexusUrl: env.NEXUS_REPO_HOST,
+                        repository: repoName,
+                        credentialsId: env.NEXUS_CREDS_ID,
+                        groupId: pom.groupId,
+                        artifactId: pom.artifactId,
+                        version: pom.version,
+                        packaging: pom.packaging, // Uses 'jar' as defined in your POM
+                        // Specify the actual file path generated by the 'mvn clean install' command
+                        artifacts: [[artifactId: pom.artifactId, classifier: '', file: "target/${pom.artifactId}-${pom.version}.jar", type: pom.packaging]]
+                    )
+                }
+            }
         }
     }
 }
