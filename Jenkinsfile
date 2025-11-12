@@ -3,7 +3,7 @@ pipeline {
     
     // Tool names MUST match your Jenkins Global Tool Configuration
     tools {
-        maven 'M3'      // ← Must match Maven name in Jenkins
+        maven 'Maven-3.x'      // ← Must match Maven name in Jenkins
         jdk 'JDK17'     // ← Must match JDK name in Jenkins
     }
     
