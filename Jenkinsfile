@@ -77,6 +77,29 @@ pipeline {
             }
         }
         
+        stages {
+        stage('Diagnostic Check') {
+            steps {
+                script {
+                        echo '=== System Information ==='
+                        sh 'java -version'
+                        sh 'mvn -version'
+                        sh 'echo "JAVA_HOME: $JAVA_HOME"'
+                        sh 'echo "PATH: $PATH"'
+                    
+                        echo '\n=== Network Checks ==='
+                        sh 'curl -I http://localhost:9000 || echo "SonarQube not reachable"'
+                        sh 'curl -I http://localhost:8081 || echo "Nexus not reachable"'
+                    
+                        echo '\n=== Environment Variables ==='
+                        sh 'printenv | grep -i java'
+                        sh 'printenv | grep -i maven'
+                        }
+                    }
+                }
+            }
+
+
         stage('Quality Gate') {
             steps {
                 echo '⏳ Waiting for SonarQube Quality Gate result...'
