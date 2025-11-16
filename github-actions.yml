@@ -1,0 +1,5 @@
+name: Publish to Nexus on Tag
+on:
+  push:
+    tags:
+      - 'v*.*.*' # Trigger this workflow on any push of a tag like v1.0.0
