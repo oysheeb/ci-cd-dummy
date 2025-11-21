@@ -1,104 +1,92 @@
 pipeline {
     agent any
-    
-    // Tool names MUST match your Jenkins Global Tool Configuration
+
     tools {
-        maven 'Maven-3.x'      // ← Must match Maven name in Jenkins
-        jdk 'JDK17'     // ← Must match JDK name in Jenkins
+        maven 'Maven-3.x'
+        jdk 'JDK17'
     }
-    
+
     environment {
-        // URLs (not secrets)
-        NEXUS_REPO_HOST = 'localhost:8081'  // ← NO http:// prefix!
+        NEXUS_REPO_HOST = 'http://localhost:8081'
         SONAR_URL = 'http://localhost:9000'
-        
-        // Jenkins Credential IDs (these are REFERENCES, not actual credentials)
-        NEXUS_CREDS_ID = 'nexus-credentials'   // ← Must match Jenkins credential ID
-        SONAR_TOKEN_ID = 'sonarqube-token'     // ← Must match Jenkins credential ID
-        
-        // Nexus repositories
+        NEXUS_CREDS_ID = 'nexus-credentials'
+        SONAR_TOKEN_ID = 'sonarqube-token'
         NEXUS_SNAPSHOT_REPO = 'maven-snapshots'
         NEXUS_RELEASE_REPO = 'maven-releases'
     }
-    
+
     stages {
         stage('Checkout Code') {
             steps {
                 echo '📥 Checking out code from SCM...'
                 checkout scm
                 script {
-                    // Get Git info for logging
-                    env.GIT_COMMIT = sh(returnStdout: true, script: 'git rev-parse HEAD').trim()
-                    env.GIT_BRANCH = sh(returnStdout: true, script: 'git rev-parse --abbrev-ref HEAD').trim()
+                    env.GIT_COMMIT = bat(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_BRANCH = bat(script: 'git rev-parse --abbrev-ref HEAD', returnStdout: true).trim()
                     echo "Branch: ${env.GIT_BRANCH}, Commit: ${env.GIT_COMMIT?.take(7)}"
                 }
             }
         }
-        
+
         stage('Build') {
             steps {
                 echo '🔨 Compiling the project...'
-                sh 'mvn clean compile'
+                bat 'mvn clean compile'
             }
         }
-        
+
         stage('Unit Tests') {
             steps {
                 echo '🧪 Running unit tests...'
-                sh 'mvn test'
+                bat 'mvn test'
             }
             post {
                 always {
-                    // Publish test results
                     junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml'
                 }
             }
         }
-        
+
         stage('Package') {
             steps {
                 echo '📦 Packaging the application...'
-                sh 'mvn package -DskipTests'
+                bat 'mvn package -DskipTests'
             }
         }
-        
+
         stage('SonarQube Analysis') {
             steps {
                 echo '🔍 Running SonarQube analysis...'
-                // withSonarQubeEnv uses the server configuration from Jenkins
-                // The token is already configured in the SonarQube server settings
                 withSonarQubeEnv('sonarscanner') {
-                    sh """
-                        mvn sonar:sonar \
-                        -Dsonar.projectKey=ci-cd-dummy \
-                        -Dsonar.host.url=${SONAR_URL}
-                    """
+                    bat '''
+                        mvn sonar:sonar ^
+                        -Dsonar.projectKey=ci-cd-dummy ^
+                        -Dsonar.host.url=%SONAR_URL% ^
+                        -Dsonar.login=%SONAR_TOKEN_ID%
+                    '''
                 }
             }
         }
-        
-        stages {
+
         stage('Diagnostic Check') {
             steps {
                 script {
-                        echo '=== System Information ==='
-                        sh 'java -version'
-                        sh 'mvn -version'
-                        sh 'echo "JAVA_HOME: $JAVA_HOME"'
-                        sh 'echo "PATH: $PATH"'
-                    
-                        echo '\n=== Network Checks ==='
-                        sh 'curl -I http://localhost:9000 || echo "SonarQube not reachable"'
-                        sh 'curl -I http://localhost:8081 || echo "Nexus not reachable"'
-                    
-                        echo '\n=== Environment Variables ==='
-                        sh 'printenv | grep -i java'
-                        sh 'printenv | grep -i maven'
-                        }
-                    }
+                    echo '=== System Information ==='
+                    bat 'java -version'
+                    bat 'mvn -version'
+                    bat 'echo JAVA_HOME: %JAVA_HOME%'
+                    bat 'echo PATH: %PATH%'
+
+                    echo '\n=== Network Checks ==='
+                    bat 'curl -I http://localhost:9000 || echo SonarQube not reachable'
+                    bat 'curl -I http://localhost:8081 || echo Nexus not reachable'
+
+                    echo '\n=== Environment Variables ==='
+                    bat 'set | findstr JAVA'
+                    bat 'set | findstr MAVEN'
                 }
             }
-
+        }
 
         stage('Quality Gate') {
             steps {
@@ -115,39 +103,33 @@ pipeline {
                 }
             }
         }
-        
+
         stage('Publish Artifact to Nexus') {
             steps {
                 script {
                     echo '📤 Publishing artifact to Nexus Repository...'
-                    
-                    // Read POM file to get artifact details
+
                     def pom = readMavenPom file: 'pom.xml'
-                    
-                    // Determine if SNAPSHOT or RELEASE
-                    def repoName = pom.version.contains('SNAPSHOT') ? 
-                                   env.NEXUS_SNAPSHOT_REPO : 
-                                   env.NEXUS_RELEASE_REPO
-                    
+                    def repoName = pom.version.contains('SNAPSHOT') ? env.NEXUS_SNAPSHOT_REPO : env.NEXUS_RELEASE_REPO
+
                     echo """
                     ═══════════════════════════════════════
                     Artifact Information:
                     ───────────────────────────────────────
-                    Group ID:    ${pom.groupId}
-                    Artifact ID: ${pom.artifactId}
-                    Version:     ${pom.version}
-                    Packaging:   ${pom.packaging}
-                    Repository:  ${repoName}
+                    Group ID:   ${pom.groupId}
+                    Artifact ID:${pom.artifactId}
+                    Version:    ${pom.version}
+                    Packaging:  ${pom.packaging}
+                    Repository: ${repoName}
                     ═══════════════════════════════════════
                     """
-                    
-                    // Upload to Nexus
+
                     nexusArtifactUploader(
                         nexusVersion: 'nexus3',
                         protocol: 'http',
-                        nexusUrl: env.NEXUS_REPO_HOST,     // Just hostname:port
+                        nexusUrl: env.NEXUS_REPO_HOST,
                         repository: repoName,
-                        credentialsId: env.NEXUS_CREDS_ID, // Jenkins credential ID
+                        credentialsId: env.NEXUS_CREDS_ID,
                         groupId: pom.groupId,
                         artifactId: pom.artifactId,
                         version: pom.version,
@@ -161,13 +143,13 @@ pipeline {
                             ]
                         ]
                     )
-                    
+
                     echo "✅ Artifact uploaded successfully to ${repoName}!"
                 }
             }
         }
     }
-    
+
     post {
         success {
             echo '✅ ════════════════════════════════════════'
