@@ -153,12 +153,12 @@ pipeline {
     post {
         success {
             echo '✅ ════════════════════════════════════════'
-            echo '✅  Pipeline completed successfully !'
+            echo '✅  Pipeline completed successfully!'
             echo '✅ ════════════════════════════════════════'
         }
         failure {
             echo '❌ ════════════════════════════════════════'
-            echo '❌  Pipeline failed !'
+            echo '❌  Pipeline failed!'
             echo '❌ ════════════════════════════════════════'
         }
         always {
