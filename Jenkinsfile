@@ -18,7 +18,7 @@ pipeline {
     stages {
         stage('Checkout Code') {
             steps {
-                echo '📥 Checking out code from SCM...'
+                echo 'Checking out code from SCM...'
                 checkout scm
                 script {
                     env.GIT_COMMIT = bat(script: 'git rev-parse HEAD', returnStdout: true).trim()
@@ -30,14 +30,14 @@ pipeline {
 
         stage('Build') {
             steps {
-                echo '🔨 Compiling the project...'
+                echo 'Compiling the project...'
                 bat 'mvn clean compile'
             }
         }
 
         stage('Unit Tests') {
             steps {
-                echo '🧪 Running unit tests...'
+                echo 'Running unit tests...'
                 bat 'mvn test'
             }
             post {
@@ -49,14 +49,14 @@ pipeline {
 
         stage('Package') {
             steps {
-                echo '📦 Packaging the application...'
+                echo 'Packaging the application...'
                 bat 'mvn package -DskipTests'
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                echo '🔍 Running SonarQube analysis...'
+                echo 'Running SonarQube analysis...'
                 withSonarQubeEnv('sonarscanner') {
                     bat '''
                         mvn sonar:sonar ^
@@ -76,11 +76,9 @@ pipeline {
                     bat 'mvn -version'
                     bat 'echo JAVA_HOME: %JAVA_HOME%'
                     bat 'echo PATH: %PATH%'
-
                     echo '\n=== Network Checks ==='
                     bat 'curl -I http://localhost:9000 || echo SonarQube not reachable'
                     bat 'curl -I http://localhost:8081 || echo Nexus not reachable'
-
                     echo '\n=== Environment Variables ==='
                     bat 'set | findstr JAVA'
                     bat 'set | findstr MAVEN'
@@ -90,14 +88,14 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                echo '⏳ Waiting for SonarQube Quality Gate result...'
+                echo 'Waiting for SonarQube Quality Gate result...'
                 timeout(time: 5, unit: 'MINUTES') {
                     script {
                         def qg = waitForQualityGate()
                         if (qg.status != 'OK') {
-                            error "❌ Quality Gate failed with status: ${qg.status}"
+                            error "Quality Gate failed with status: ${qg.status}"
                         } else {
-                            echo "✅ Quality Gate passed!"
+                            echo "Quality Gate passed!"
                         }
                     }
                 }
@@ -107,23 +105,18 @@ pipeline {
         stage('Publish Artifact to Nexus') {
             steps {
                 script {
-                    echo '📤 Publishing artifact to Nexus Repository...'
-
+                    echo 'Publishing artifact to Nexus Repository...'
                     def pom = readMavenPom file: 'pom.xml'
                     def repoName = pom.version.contains('SNAPSHOT') ? env.NEXUS_SNAPSHOT_REPO : env.NEXUS_RELEASE_REPO
-
                     echo """
-                    ═══════════════════════════════════════
-                    Artifact Information:
-                    ───────────────────────────────────────
+                    ===== Artifact Information =====
                     Group ID:   ${pom.groupId}
                     Artifact ID:${pom.artifactId}
                     Version:    ${pom.version}
                     Packaging:  ${pom.packaging}
                     Repository: ${repoName}
-                    ═══════════════════════════════════════
+                    ==============================
                     """
-
                     nexusArtifactUploader(
                         nexusVersion: 'nexus3',
                         protocol: 'http',
@@ -143,8 +136,7 @@ pipeline {
                             ]
                         ]
                     )
-
-                    echo "✅ Artifact uploaded successfully to ${repoName}!"
+                    echo "Artifact uploaded successfully to ${repoName}!"
                 }
             }
         }
@@ -152,17 +144,13 @@ pipeline {
 
     post {
         success {
-            echo '✅ ════════════════════════════════════════'
-            echo '✅  Pipeline completed successfully!'
-            echo '✅ ════════════════════════════════════════'
+            echo 'Pipeline completed successfully!'
         }
         failure {
-            echo '❌ ════════════════════════════════════════'
-            echo '❌  Pipeline failed!'
-            echo '❌ ════════════════════════════════════════'
+            echo 'Pipeline failed!'
         }
         always {
-            echo '🧹 Cleaning workspace...'
+            echo 'Cleaning workspace...'
             cleanWs()
         }
     }
