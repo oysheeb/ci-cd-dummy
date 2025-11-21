@@ -57,7 +57,7 @@ pipeline {
         stage('SonarQube Analysis') {
             steps {
                 echo 'Running SonarQube analysis...'
-                withSonarQubeEnv('sonarscanner') {
+                withSonarQubeEnv('SonarQubeServer') {
                     bat '''
                         mvn sonar:sonar ^
                         -Dsonar.projectKey=ci-cd-dummy ^
