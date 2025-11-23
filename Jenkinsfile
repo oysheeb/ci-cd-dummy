@@ -60,8 +60,8 @@ pipeline {
                 withSonarQubeEnv('SonarQubeServer') {
                     bat '''
                         mvn sonar:sonar ^
-                        -Dsonar.projectKey=ci-cd-dummy ^
-                        -Dsonar.host.url=%SONAR_URL% ^
+                        -Dsonar.projectKey=ci-cd-dummy^
+                        -Dsonar.host.url=%SONAR_URL%^
                         -Dsonar.login=%SONAR_TOKEN_ID%
                     '''
                 }
