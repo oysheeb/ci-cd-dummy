@@ -7,7 +7,7 @@ pipeline {
     }
 
     environment {
-        NEXUS_REPO_HOST = 'http://localhost:8081'
+        NEXUS_REPO_HOST = 'localhost:8081'
         SONAR_URL = 'http://localhost:9000'
         NEXUS_CREDS_ID = 'nexus-credentials'
         SONAR_TOKEN_ID = 'sonarqube-token'
