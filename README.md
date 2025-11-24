@@ -1,4 +1,5 @@
 # Building Java Projects with Maven
+[![Build Status](http://localhost:8080/job/dummy1/badge/icon)](http://localhost:8080/job/dummy1/)
 This guide walks you through using Maven to build a simple Java project.
 
 ## What you’ll build

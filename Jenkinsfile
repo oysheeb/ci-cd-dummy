@@ -137,16 +137,24 @@ pipeline {
         }
     }
 
-    post {
-        success {
-            echo 'Pipeline completed successfully!'
-        }
-        failure {
-            echo 'Pipeline failed!'
-        }
-        always {
-            echo 'Cleaning workspace...'
-            cleanWs()
-        }
+   post {
+    success {
+        echo 'Pipeline completed successfully!'
+        step([$class: 'GitHubCommitStatusSetter',
+            contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
+            statusResultSource: [$class: 'DefaultStatusResultSource'],
+            statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
     }
+    failure {
+        echo 'Pipeline failed!'
+        step([$class: 'GitHubCommitStatusSetter',
+            contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
+            statusResultSource: [$class: 'DefaultStatusResultSource'],
+            statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
+    }
+    always {
+        echo 'Cleaning workspace...'
+        cleanWs()
+    }
+}
 }
