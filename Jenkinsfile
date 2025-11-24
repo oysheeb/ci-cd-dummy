@@ -137,18 +137,24 @@ pipeline {
         }
     }
 
-    post {
-        success {
-            echo 'Pipeline completed successfully!'
-            githubNotify context: 'ci', status: 'SUCCESS', description: 'Build passed'
-        }
-        failure {
-            echo 'Pipeline failed!'
-            githubNotify context: 'ci', status: 'FAILURE', description: 'Build failed'
-        }
-        always {
-            echo 'Cleaning workspace...'
-            cleanWs()
-        }
+   post {
+    success {
+        echo 'Pipeline completed successfully!'
+        step([$class: 'GitHubCommitStatusSetter',
+            contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
+            statusResultSource: [$class: 'DefaultStatusResultSource'],
+            statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
     }
+    failure {
+        echo 'Pipeline failed!'
+        step([$class: 'GitHubCommitStatusSetter',
+            contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
+            statusResultSource: [$class: 'DefaultStatusResultSource'],
+            statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
+    }
+    always {
+        echo 'Cleaning workspace...'
+        cleanWs()
+    }
+}
 }
