@@ -139,22 +139,17 @@ pipeline {
 
    post {
     success {
-        echo 'Pipeline completed successfully!'
+        // ... other steps like junit, archiving, etc ...
         step([$class: 'GitHubCommitStatusSetter',
-            contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
-            statusResultSource: [$class: 'DefaultStatusResultSource'],
-            statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
+              contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
+              statusResultSource: [$class: 'DefaultStatusResultSource'],
+              statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
     }
     failure {
-        echo 'Pipeline failed!'
         step([$class: 'GitHubCommitStatusSetter',
-            contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
-            statusResultSource: [$class: 'DefaultStatusResultSource'],
-            statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
-    }
-    always {
-        echo 'Cleaning workspace...'
-        cleanWs()
+              contextSource: [$class: 'ManuallyEnteredCommitContextSource', context: 'ci'],
+              statusResultSource: [$class: 'DefaultStatusResultSource'],
+              statusBackrefSource: [$class: 'ManuallyEnteredBackrefSource', backref: '']])
     }
 }
 }
