@@ -140,9 +140,11 @@ pipeline {
     post {
         success {
             echo 'Pipeline completed successfully!'
+            githubNotify context: 'ci', status: 'SUCCESS', description: 'Build passed'
         }
         failure {
             echo 'Pipeline failed!'
+            githubNotify context: 'ci', status: 'FAILURE', description: 'Build failed'
         }
         always {
             echo 'Cleaning workspace...'
